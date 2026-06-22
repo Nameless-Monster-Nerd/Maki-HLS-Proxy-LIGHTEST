@@ -13,14 +13,11 @@ if not access.check() then
     return ngx.exit(403)
 end
 
--- Get query parameters
-local args = utils.parse_query_params()
-local url = utils.url_decode(args.url)
-local headers = utils.parse_headers(args.headers)
-
+-- Resolve url + headers (handles encrypted ?p= or plain ?url=&headers=)
+local url, headers, err = utils.resolve_request()
 if not url then
     ngx.status = 400
-    ngx.say('{"error": "Missing url parameter"}')
+    ngx.say('{"error": "' .. (err or "bad request") .. '"}')
     return ngx.exit(400)
 end
 

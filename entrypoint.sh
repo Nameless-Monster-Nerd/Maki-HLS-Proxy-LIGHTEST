@@ -19,6 +19,17 @@ mkdir -p /cache
 chown -R nobody:nobody /cache
 chmod -R 755 /cache
 
+if [ -n "$ENCRYPTION_KEY" ]; then
+    KEY_LEN=$(printf %s "$ENCRYPTION_KEY" | wc -c | tr -d ' ')
+    if [ "$KEY_LEN" = "64" ]; then
+        echo "Encryption: ENABLED (AES-256-CBC)"
+    else
+        echo "WARNING: ENCRYPTION_KEY must be 64 hex chars, got $KEY_LEN. Encryption will be disabled."
+    fi
+else
+    echo "Encryption: disabled (set ENCRYPTION_KEY to enable)"
+fi
+
 echo "Starting with CACHE_SIZE=$CACHE_SIZE, CACHE_EXPIRY=$CACHE_EXPIRY"
 
 # Start OpenResty

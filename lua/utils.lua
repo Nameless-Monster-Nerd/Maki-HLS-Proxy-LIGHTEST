@@ -1,11 +1,18 @@
 local _M = {}
 
 local cjson = require "cjson.safe"
+local crypto = require "crypto"
 
 -- Parse query params from raw query string
 function _M.parse_query_params()
     local query = ngx.var.query_string or ""
     local params = {}
+
+    local p = query:match("^p=([^&]+)")
+    if not p then
+        p = query:match("&p=([^&]+)")
+    end
+    params.p = p
 
     local url = query:match("url=(.-)&headers=")
     if not url then
@@ -20,6 +27,32 @@ function _M.parse_query_params()
     params.headers = headers
 
     return params
+end
+
+-- Resolve url + headers from query (handles both encrypted ?p= and plain ?url=&headers=)
+-- Returns url, headers, err
+function _M.resolve_request()
+    local args = _M.parse_query_params()
+
+    if args.p and crypto.enabled() then
+        local token = _M.url_decode(args.p)
+        local url, headers, err = crypto.decrypt_payload(token)
+        if not url then
+            return nil, nil, err or "decrypt failed"
+        end
+        return url, headers, nil
+    end
+
+    if args.p and not crypto.enabled() then
+        return nil, nil, "encrypted param received but ENCRYPTION_KEY not configured"
+    end
+
+    local url = _M.url_decode(args.url)
+    local headers = _M.parse_headers(args.headers)
+    if not url then
+        return nil, nil, "missing url"
+    end
+    return url, headers, nil
 end
 
 -- URL decode
@@ -107,14 +140,23 @@ function _M.build_proxy_url(original_url, headers, proxy_type)
         end
     end
 
-    local encoded_url = _M.url_encode(original_url)
-    local encoded_headers = _M.url_encode(cjson.encode(headers_copy))
-
     -- Map proxy type to endpoint with extension
     local endpoint = "ts-proxy.ts"
     if proxy_type == "m3u8-proxy" then
         endpoint = "m3u8-proxy.m3u8"
     end
+
+    if crypto.enabled() then
+        local token = crypto.encrypt_payload(original_url, headers_copy)
+        if token then
+            return string.format("%s/%s?p=%s",
+                proxy_host, endpoint, _M.url_encode(token))
+        end
+        -- fall through to plain on failure
+    end
+
+    local encoded_url = _M.url_encode(original_url)
+    local encoded_headers = _M.url_encode(cjson.encode(headers_copy))
 
     return string.format("%s/%s?url=%s&headers=%s",
         proxy_host, endpoint, encoded_url, encoded_headers)
