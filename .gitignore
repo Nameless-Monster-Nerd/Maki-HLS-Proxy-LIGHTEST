@@ -1,2 +1,5 @@
 .claude
 maki-hls-proxy-cache/
+.env
+.env.*
+!.env.example
